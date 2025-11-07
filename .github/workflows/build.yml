@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Reponun indirilmesi
-        uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
 
       - name: Gerekli araçları kur
         run: |

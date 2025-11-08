@@ -1,4 +1,4 @@
-name: Android APK Builder
+name: Android APK Builder (manual SDK install)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -32,24 +32,35 @@ jobs:
           restore-keys: |
             gradle-cache-${{ runner.os }}-
 
-      - name: Install Android SDK commandline tools + packages (platform 34, build-tools 34)
-        uses: android-actions/setup-android@v2
-        with:
-          packages: 'cmdline-tools;latest platform-tools platforms;android-34 build-tools;34.0.0'
-
-      - name: Show SDK info (sanity)
+      - name: Install Android commandline-tools (manual) and required packages
         run: |
+          set -e
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          mkdir -p $ANDROID_SDK_ROOT
+          cd $GITHUB_WORKSPACE
+          echo "Downloading commandline-tools..."
+          curl -sS -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q cmdline-tools.zip -d cmdline-tools-temp
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
+          # move inner "cmdline-tools" contents into sdk path
+          mv cmdline-tools-temp/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
+          rm -rf cmdline-tools-temp cmdline-tools.zip
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          sdkmanager --version
+          echo "Installing platform-tools, platform 34 and build-tools 34.0.0..."
+          yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "SDK packages installed"
+      - name: Show SDK info (quick)
+        run: |
           ls -la $ANDROID_SDK_ROOT || true
-          if [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 25 || true
-          fi
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 40 || true
 
-      - name: Unzip project package (expects fastdl-android.zip at repo root)
+      - name: Unzip project package (expects fastdl-android.zip in repo root)
         run: |
           echo "Files in repo root:"
           ls -la
-          unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed or file missing" && ls -la && exit 1)
+          unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed (file missing or corrupt)" && ls -la && exit 1)
           echo "Files after unzip:"
           ls -la fastdl || true
 
@@ -94,5 +105,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FastDL-apk
+          name: FastDL-apks
           path: fastdl/app/build/outputs/**/*.apk

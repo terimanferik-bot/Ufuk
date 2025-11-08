@@ -16,9 +16,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Extract with 7z
+            - name: Extract with 7z
         run: |
-          sudo apt-get update -qq && sudo apt-get install -p7zip-full -y
+          sudo apt-get update -qq
+          sudo apt-get install -y p7zip-full
           7z x download.zip -oextracted -y || true
 
       - name: Untar if needed

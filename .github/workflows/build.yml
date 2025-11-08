@@ -1,4 +1,4 @@
-name: Android APK Builder (manual SDK install)
+name: Android APK Builder
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -32,37 +32,33 @@ jobs:
           restore-keys: |
             gradle-cache-${{ runner.os }}-
 
-      - name: Install Android commandline-tools (manual) and required packages
+      - name: Install Android commandline-tools (manual) & required packages
         run: |
           set -e
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           mkdir -p $ANDROID_SDK_ROOT
-          cd $GITHUB_WORKSPACE
-          echo "Downloading commandline-tools..."
           curl -sS -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q cmdline-tools.zip -d cmdline-tools-temp
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
-          # move inner "cmdline-tools" contents into sdk path
           mv cmdline-tools-temp/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
           rm -rf cmdline-tools-temp cmdline-tools.zip
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           sdkmanager --version
-          echo "Installing platform-tools, platform 34 and build-tools 34.0.0..."
           yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          echo "SDK packages installed"
-      - name: Show SDK info (quick)
+
+      - name: Show SDK info (sanity)
         run: |
           ls -la $ANDROID_SDK_ROOT || true
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 40 || true
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 30 || true
 
-      - name: Unzip project package (expects fastdl-android.zip in repo root)
+      - name: Unzip project package (uses recursive listing)
         run: |
-          echo "Files in repo root:"
-          ls -la
-          unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed (file missing or corrupt)" && ls -la && exit 1)
-          echo "Files after unzip:"
-          ls -la fastdl || true
+          echo "Listing files before unzip (recursive):"
+          ls -R
+          echo "Attempting to unzip fastdl-android.zip -> fastdl"
+          unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed (file missing or corrupt). Repo root listing above." && ls -R && exit 1)
+          echo "Listing files after unzip (fastdl):"
+          ls -R fastdl || true
 
       - name: Ensure gradlew executable if present
         run: |
@@ -74,7 +70,7 @@ jobs:
           fi
           ls -la fastdl || true
 
-      - name: Download Gradle 7.6 (fallback for AGP 8.1 compatibility)
+      - name: Download Gradle 7.6 (fallback for AGP 8.1)
         run: |
           curl -sS -L -o gradle-7.6-bin.zip https://services.gradle.org/distributions/gradle-7.6-bin.zip
           unzip -q gradle-7.6-bin.zip -d gradle

@@ -1,4 +1,4 @@
-name: Android APK Builder
+name: Android APK Builder (fixed sdkmanager)
 
 on:
   workflow_dispatch:
@@ -32,32 +32,41 @@ jobs:
           restore-keys: |
             gradle-cache-${{ runner.os }}-
 
-      - name: Install Android commandline-tools (manual) & required packages
+      - name: Install Android commandline-tools and packages (fixed PATH usage)
         run: |
           set -e
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          mkdir -p $ANDROID_SDK_ROOT
+          mkdir -p "$ANDROID_SDK_ROOT"
+          # download commandline tools
           curl -sS -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q cmdline-tools.zip -d cmdline-tools-temp
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
-          mv cmdline-tools-temp/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          # move contents into expected dir
+          mv cmdline-tools-temp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
           rm -rf cmdline-tools-temp cmdline-tools.zip
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          # make sdkmanager available in this same shell by exporting PATH
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+          echo "PATH now: $PATH"
+          # sanity checks
+          echo "sdkmanager location:"
+          which sdkmanager || ls -la "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
           sdkmanager --version
-          yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          # accept licenses and install packages (non-interactive)
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Show SDK info (sanity)
         run: |
+          echo "Listing SDK root"
           ls -la $ANDROID_SDK_ROOT || true
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 30 || true
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 40 || true
 
-      - name: Unzip project package (uses recursive listing)
+      - name: Unzip project package (recursive listing)
         run: |
-          echo "Listing files before unzip (recursive):"
+          echo "Listing repo root recursive:"
           ls -R
-          echo "Attempting to unzip fastdl-android.zip -> fastdl"
-          unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed (file missing or corrupt). Repo root listing above." && ls -R && exit 1)
-          echo "Listing files after unzip (fastdl):"
+          echo "Unzipping fastdl-android.zip -> fastdl"
+          unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed (file missing/corrupt)"; ls -R; exit 1)
+          echo "Files in fastdl:"
           ls -R fastdl || true
 
       - name: Ensure gradlew executable if present
@@ -83,10 +92,10 @@ jobs:
         run: |
           set -e
           echo "Working dir: $(pwd)"
-          echo "List fastdl root:"
           ls -la
           if [ -f ./gradlew ]; then
-            echo "Using project gradlew"
+            echo "Using ./gradlew"
+            chmod +x ./gradlew || true
             ./gradlew --no-daemon --stacktrace assembleDebug
           else
             echo "Using downloaded gradle"

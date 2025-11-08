@@ -1,4 +1,4 @@
-name: Android APK Builder (fixed sdkmanager)
+name: Android APK Builder (fix plugin apply)
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -32,42 +32,84 @@ jobs:
           restore-keys: |
             gradle-cache-${{ runner.os }}-
 
-      - name: Install Android commandline-tools and packages (fixed PATH usage)
+      - name: Install Android commandline-tools and required packages (fixed PATH)
         run: |
           set -e
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           mkdir -p "$ANDROID_SDK_ROOT"
-          # download commandline tools
           curl -sS -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q cmdline-tools.zip -d cmdline-tools-temp
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          # move contents into expected dir
           mv cmdline-tools-temp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
           rm -rf cmdline-tools-temp cmdline-tools.zip
-          # make sdkmanager available in this same shell by exporting PATH
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          echo "PATH now: $PATH"
-          # sanity checks
-          echo "sdkmanager location:"
-          which sdkmanager || ls -la "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
           sdkmanager --version
-          # accept licenses and install packages (non-interactive)
           yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
-      - name: Show SDK info (sanity)
-        run: |
-          echo "Listing SDK root"
-          ls -la $ANDROID_SDK_ROOT || true
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list | head -n 40 || true
 
       - name: Unzip project package (recursive listing)
         run: |
           echo "Listing repo root recursive:"
           ls -R
-          echo "Unzipping fastdl-android.zip -> fastdl"
+          echo "Attempting to unzip fastdl-android.zip -> fastdl"
           unzip -o fastdl-android.zip -d fastdl || (echo "unzip failed (file missing/corrupt)"; ls -R; exit 1)
           echo "Files in fastdl:"
           ls -R fastdl || true
+
+      - name: Normalize Gradle files to legacy classpath/apply style (fix plugin apply errors)
+        run: |
+          set -e
+          # Ensure root build.gradle has google() and classpath for AGP 8.1
+          cat > fastdl/build.gradle <<'BG'
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+    }
+}
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+BG
+          # Ensure settings.gradle exists
+          cat > fastdl/settings.gradle <<'SG'
+rootProject.name = 'fastdl-android'
+include ':app'
+SG
+          # Replace app module build.gradle with legacy 'apply plugin' style to avoid plugin-dsl resolution issues
+          cat > fastdl/app/build.gradle <<'AG'
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdkVersion 34
+    defaultConfig {
+        applicationId "com.example.fastdownloader"
+        minSdkVersion 24
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+}
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.10.0'
+}
+AG
+          echo "Normalized gradle files written:"
+          ls -la fastdl
+          sed -n '1,160p' fastdl/build.gradle || true
+          sed -n '1,160p' fastdl/app/build.gradle || true
 
       - name: Ensure gradlew executable if present
         run: |
@@ -94,7 +136,7 @@ jobs:
           echo "Working dir: $(pwd)"
           ls -la
           if [ -f ./gradlew ]; then
-            echo "Using ./gradlew"
+            echo "Using project gradlew"
             chmod +x ./gradlew || true
             ./gradlew --no-daemon --stacktrace assembleDebug
           else

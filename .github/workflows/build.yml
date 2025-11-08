@@ -8,32 +8,47 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Reponun indirilmesi
         uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: JDK 17 kurulumu
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Gerekli araçların kurulumu
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip openjdk-17-jdk curl zip
+          sudo apt-get install -y unzip wget
 
-      - name: Unzip project
-        run: unzip fastdl-android.zip -d fastdl
+      - name: ZIP dosyasını aç
+        run: unzip fastdl-android.zip -d fastdl-android
 
-      - name: Download and setup Gradle
+      - name: Gradle Wrapper indir (eksikse)
+        working-directory: fastdl-android
         run: |
-          curl -L -o gradle-7.6-bin.zip https://services.gradle.org/distributions/gradle-7.6-bin.zip
-          unzip gradle-7.6-bin.zip -d gradle
-          export PATH="$PWD/gradle/gradle-7.6/bin:$PATH"
-          gradle -v  # versiyon kontrolü
+          mkdir -p gradle/wrapper
+          wget -O gradle/wrapper/gradle-wrapper.jar https://services.gradle.org/distributions/gradle-8.6-bin.zip
+          unzip -p gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1 || true
 
-      - name: Build APK
-        working-directory: fastdl
-        run: gradle assembleRelease
+      - name: Gradle Wrapper izinleri
+        run: chmod +x fastdl-android/gradlew
 
-      - name: Upload APK artifact
+      - name: Android Gradle plugin ve bağımlılıkları yükle
+        working-directory: fastdl-android
+        run: |
+          ./gradlew --no-daemon --stacktrace help || true
+
+      - name: APK derle
+        working-directory: fastdl-android
+        run: ./gradlew assembleRelease
+
+      - name: Derlenmiş APK’yı yükle (artifact olarak)
         uses: actions/upload-artifact@v4
         with:
-          name: FastDL-Android-APK
-          path: fastdl/app/build/outputs/apk/release/*.apk
+          name: FastDownloader-APK
+          path: fastdl-android/app/build/outputs/apk/release/*.apk

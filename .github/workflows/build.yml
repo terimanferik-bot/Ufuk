@@ -16,9 +16,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Extract with 7z (abs-path safe)
+      - name: Extract with 7z
         run: |
-          sudo apt-get update -qq && sudo apt-get install -qq p7zip-full
+          sudo apt-get update -qq && sudo apt-get install -p7zip-full -y
           7z x download.zip -oextracted -y || true
 
       - name: Untar if needed
@@ -26,10 +26,23 @@ jobs:
           f=extracted/ultra-download-manager-complete.tar.gz
           [ -f "$f" ] && tar -xzf "$f" -C extracted
 
-      - name: Find project folder
+      # ---------- DEBUG: gerçek yapıyı göster ----------
+      - name: DEBUG – list all extracted files
+        run: |
+          echo "===== extracted/ altındaki her şey ====="
+          find extracted -type f | head -40
+          echo "===== klasörler ====="
+          find extracted -type d | head -20
+      # ---------------------------------------------------
+
+      - name: Find project folder (gradlew arayarak)
         id: proj
         run: |
           d=$(find extracted -name gradlew -type f -exec dirname {} \; | head -n1)
+          if [ -z "$d" ]; then
+            echo "❌ gradlew bulunamadı; bu bir Android-Gradle projesi değil."
+            exit 1
+          fi
           echo "dir=$d" >> $GITHUB_OUTPUT
 
       - name: Build

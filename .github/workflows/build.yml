@@ -1,67 +1,113 @@
-name: Build FastDL Android APK (CI-ready)
+name: Android Build (FastDL)
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_SDK_ROOT: ${{ runner.tool_cache }}/android-sdk
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+      - name: Setup JDK 17
+        uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Android SDK commandline tools + packages
-        uses: android-actions/setup-android@v2
-        with:
-          packages: 'cmdline-tools;latest platform-tools platforms;android-34 build-tools;34.0.0'
-          # installs cmdline-tools, platform-tools, android-34 platform and build-tools 34.0.0
-        # (This step accepts licenses and places sdkmanager in PATH.) 1
-
-      - name: Unzip project package
+      - name: Create project structure
         run: |
-          # adjust filename if yours is different
-          unzip -o fastdl-android.zip -d fastdl || unzip -o fastdl-android.zip -d fastdl
+          mkdir -p fastdl-android/app/src/main/java/com/fastdl
+          mkdir -p fastdl-android/gradle/wrapper
 
-      - name: Download Gradle 7.6 and add to PATH (AGP 8.1 compatible)
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-7.6-bin.zip -O gradle-7.6-bin.zip
-          unzip -q gradle-7.6-bin.zip -d gradle
-          echo "GRADLE_HOME=$PWD/gradle/gradle-7.6" >> $GITHUB_ENV
-          echo "$PWD/gradle/gradle-7.6/bin" >> $GITHUB_PATH
-          gradle -v
+          cat << 'EOF' > fastdl-android/settings.gradle
+          rootProject.name = "FastDL"
+          include ':app'
+          EOF
 
-      - name: Ensure Gradle wrapper executable (if present)
-        run: |
-          if [ -f fastdl/gradlew ]; then
-            chmod +x fastdl/gradlew || true
-          fi
+          cat << 'EOF' > fastdl-android/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
 
-      - name: Build APK (use wrapper if present, otherwise downloaded gradle)
-        working-directory: fastdl
-        run: |
+          android {
+              namespace 'com.fastdl'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.fastdl"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+
+          dependencies {}
+          EOF
+
+          cat << 'EOF' > fastdl-android/app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.fastdl'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.fastdl"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+
+          dependencies {}
+          EOF
+
+          cat << 'EOF' > fastdl-android/gradle/wrapper/gradle-wrapper.properties
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          EOF
+
+          cat << 'EOF' > fastdl-android/gradlew
+          #!/bin/bash
           set -e
-          if [ -f ./gradlew ]; then
-            echo "Using project gradlew"
-            ./gradlew --no-daemon --stacktrace assembleDebug
-          else
-            echo "Using downloaded gradle"
-            gradle --no-daemon --stacktrace assembleDebug
-          fi
+          gradle "$@"
+          EOF
 
-      - name: Collect APK(s)
-        uses: actions/upload-artifact@v4
+          chmod +x fastdl-android/gradlew
+
+      - name: Download Gradle Wrapper jar
+        run: |
+          curl -L -o fastdl-android/gradle/wrapper/gradle-wrapper.jar https://services.gradle.org/distributions/gradle-8.7-bin.zip
+
+      - name: Build release APK
+        run: |
+          cd fastdl-android
+          ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
         with:
-          name: FastDL-apks
-          path: fastdl/app/build/outputs/**/*.apk
+          name: FastDL-release
+          path: fastdl-android/app/build/outputs/apk/release/*.apk

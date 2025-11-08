@@ -19,27 +19,58 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         
-    - name: Unzip project
+    - name: Auto-extract & locate project
       run: |
-        unzip -q download.zip -d android-project
+        # 1. Zip'i zorla çıkar (mutlak yol hatalarını yoksay)
+        unzip -q -o download.zip 2>&1 || true
+        
+        # 2. Eğer tar.gz varsa onu da çıkar
+        if [ -f "ultra-download-manager-complete.tar.gz" ]; then
+          echo "📦 Nested tar.gz found, extracting..."
+          tar -xzf ultra-download-manager-complete.tar.gz
+        fi
+        
+        # 3. Otomatik proje dizinini bul (gradlew arayarak)
+        PROJECT_DIR=$(find . -maxdepth 3 -type f -name "gradlew" -exec dirname {} \; | head -n 1)
+        
+        # 4. Eğer bulamazsan build.gradle ile dene
+        if [ -z "$PROJECT_DIR" ]; then
+          PROJECT_DIR=$(find . -maxdepth 3 -name "build.gradle" -exec grep -l "com.android.application" {} \; | xargs dirname | head -n 1)
+        fi
+        
+        # 5. Hala bulamazsan hata ver
+        if [ -z "$PROJECT_DIR" ]; then
+          echo "❌ Android project not found in:"
+          find . -maxdepth 2 -type d
+          exit 1
+        fi
+        
+        echo "✅ PROJECT_DIR=$PROJECT_DIR"
+        echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+        
+    - name: Show project structure
+      run: |
+        echo "📂 Project files:"
+        ls -la ${{ env.PROJECT_DIR }}/
         
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       
-    - name: Make gradlew executable
+    - name: Build APK
       run: |
-        cd android-project
+        cd ${{ env.PROJECT_DIR }}
         chmod +x gradlew
+        ./gradlew assembleDebug --stacktrace
         
-    - name: Build Debug APK
+    - name: Auto-find & upload APK
       run: |
-        cd android-project
-        ./gradlew assembleDebug
+        APK_PATH=$(find ${{ env.PROJECT_DIR }} -name "*.apk" -path "*/debug/*" | head -n 1)
+        echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
         
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
-        path: android-project/app/build/outputs/apk/debug/app-debug.apk
+        path: ${{ env.APK_PATH }}
         retention-days: 7
         

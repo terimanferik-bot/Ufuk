@@ -16,10 +16,15 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip openjdk-17-jdk
+          sudo apt-get install -y unzip openjdk-17-jdk curl
 
       - name: Unzip project
         run: unzip fastdl-android.zip -d fastdl
+
+      - name: Download Gradle Wrapper JAR
+        run: |
+          mkdir -p fastdl/gradle/wrapper
+          curl -L -o fastdl/gradle/wrapper/gradle-wrapper.jar https://services.gradle.org/distributions/gradle-7.6-bin.zip
 
       - name: Make gradlew executable
         run: chmod +x fastdl/gradlew

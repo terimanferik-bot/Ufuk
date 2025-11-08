@@ -19,7 +19,7 @@ jobs:
           sudo apt-get install -y unzip openjdk-17-jdk
 
       - name: Unzip project
-        run: unzip fastdownloader_complete.zip -d fastdownloader
+        run: unzip fastdl-android.zip -d fastdownloader
 
       - name: Make gradlew executable
         run: chmod +x fastdownloader/gradlew

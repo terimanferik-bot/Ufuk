@@ -18,21 +18,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 1) Zip’i mutlak yolları görmezden gelerek çıkar
-      - name: Extract download.zip
+      # 1) 7z ile kök yolları görmezden gelerek çıkar
+      - name: Extract download.zip (7z)
         run: |
-          # unzip --skip-wilds  -->  kök yolları göz ardı et
-          unzip -q --skip-wilds download.zip 2>/dev/null || \
-          unzip -q -j download.zip -d extracted 2>/dev/null || true
+          7z x download.zip -y -oextracted || true
+          # 7z kök yolları otomatik düzeltir, içerik ./extracted/ içine gelir
 
       # 2) İç içe tar.gz varsa onu da aç
-      - name: Extract nested tar.gz if exists
+      - name: Extract nested tar.gz
         run: |
-          if [ -f "ultra-download-manager-complete.tar.gz" ]; then
-            tar -xzf ultra-download-manager-complete.tar.gz
-          fi
           if [ -f "extracted/ultra-download-manager-complete.tar.gz" ]; then
-            tar -xzf extracted/ultra-download-manager-complete.tar.gz -C extracted
+            mkdir -p nested
+            tar -xzf extracted/ultra-download-manager-complete.tar.gz -C nested
           fi
 
       # 3) Otomatik proje klasörünü bul (gradlew dosyasına göre)

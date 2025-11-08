@@ -1,4 +1,4 @@
-name: Android APK Builder
+name: Android APK Builder (fixed)
 
 on:
   workflow_dispatch:
@@ -8,47 +8,61 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
     steps:
-      - name: Reponun indirilmesi
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: JDK 17 kurulumu
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Gerekli araçların kurulumu
+      - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip wget
+          sudo apt-get install -y unzip wget curl openjdk-17-jdk zip
 
-      - name: ZIP dosyasını aç
-        run: unzip fastdl-android.zip -d fastdl-android
+      - name: Unzip project
+        run: unzip -o fastdl-android.zip -d fastdl-android
 
-      - name: Gradle Wrapper indir (eksikse)
-        working-directory: fastdl-android
+      - name: Ensure google() repository in build.gradle (if missing)
         run: |
-          mkdir -p gradle/wrapper
-          wget -O gradle/wrapper/gradle-wrapper.jar https://services.gradle.org/distributions/gradle-8.6-bin.zip
-          unzip -p gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1 || true
+          FILE=fastdl-android/build.gradle
+          # insert google() into buildscript.repositories if missing
+          if ! grep -q "google()" "$FILE"; then
+            # Try to insert after 'repositories {' occurrences in buildscript and allprojects
+            perl -0777 -pe "s/(buildscript\\s*\\{.*?repositories\\s*\\{)/\\1\\n            google()/s" -i "$FILE" || true
+            perl -0777 -pe "s/(allprojects\\s*\\{.*?repositories\\s*\\{)/\\1\\n        google()/s" -i "$FILE" || true
+          fi
+          echo "--- build.gradle after edit ---"
+          sed -n '1,200p' "$FILE"
 
-      - name: Gradle Wrapper izinleri
-        run: chmod +x fastdl-android/gradlew
-
-      - name: Android Gradle plugin ve bağımlılıkları yükle
-        working-directory: fastdl-android
+      - name: Download Gradle 7.6 and add to PATH
         run: |
-          ./gradlew --no-daemon --stacktrace help || true
+          wget -q https://services.gradle.org/distributions/gradle-7.6-bin.zip -O gradle-7.6-bin.zip
+          unzip -q gradle-7.6-bin.zip -d gradle
+          echo "## Added gradle to PATH"
+          export PATH="$PWD/gradle/gradle-7.6/bin:$PATH"
+          gradle -v
 
-      - name: APK derle
+      - name: Make gradlew executable (if present) and fallback
+        run: |
+          if [ -f fastdl-android/gradlew ]; then
+            chmod +x fastdl-android/gradlew
+          else
+            echo "No gradlew wrapper found; will use downloaded gradle"
+          fi
+
+      - name: Build APK using Gradle 7.6
         working-directory: fastdl-android
-        run: ./gradlew assembleRelease
+        env:
+          PATH: ${{ runner.workspace }}/gradle/gradle-7.6/bin:${{ env.PATH }}
+        run: |
+          # Use wrapper if present, otherwise use downloaded gradle
+          if [ -f ./gradlew ]; then
+            ./gradlew --no-daemon --stacktrace assembleRelease
+          else
+            gradle --no-daemon --stacktrace assembleRelease
+          fi
 
-      - name: Derlenmiş APK’yı yükle (artifact olarak)
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FastDownloader-APK
+          name: FastDL-Android-APK
           path: fastdl-android/app/build/outputs/apk/release/*.apk

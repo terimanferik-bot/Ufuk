@@ -1,0 +1,39 @@
+name: Android APK Builder
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip openjdk-17-jdk curl zip
+
+      - name: Unzip project
+        run: unzip fastdl-android.zip -d fastdl
+
+      - name: Download and setup Gradle
+        run: |
+          curl -L -o gradle-7.6-bin.zip https://services.gradle.org/distributions/gradle-7.6-bin.zip
+          unzip gradle-7.6-bin.zip -d gradle
+          export PATH="$PWD/gradle/gradle-7.6/bin:$PATH"
+          gradle -v  # versiyon kontrolü
+
+      - name: Build APK
+        working-directory: fastdl
+        run: gradle assembleRelease
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FastDL-Android-APK
+          path: fastdl/app/build/outputs/apk/release/*.apk
